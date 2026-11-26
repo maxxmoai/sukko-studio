@@ -1,8 +1,6 @@
 pluginManagement {
   includeBuild("build-logic")
   repositories {
-    // wasm
-    maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
     google {
       content {
         includeGroupByRegex("com\\.android.*")
@@ -17,8 +15,6 @@ pluginManagement {
 
 dependencyResolutionManagement {
   repositories {
-    // wasm
-    maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
     google()
     mavenCentral()
   }

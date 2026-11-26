@@ -13,6 +13,7 @@ import io.github.sadellie.sukko.core.iconfiles.IconFile
 import io.github.sadellie.sukko.core.iconfiles.IconPack
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
+import kotlin.io.path.ExperimentalPathApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -21,7 +22,6 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
 import okio.Path
 import okio.Path.Companion.toPath
-import kotlin.io.path.ExperimentalPathApi
 
 internal class IconPackCustomRepositoryImpl(
   private val dao: IconPackDao,
@@ -95,9 +95,14 @@ internal class IconPackCustomRepositoryImpl(
           val destinationPath = iconPackFullPath / platformFile.name
           val destinationFile = destinationPath.toFile()
           if (destinationFile.exists()) throw FileAlreadyExistsException(destinationFile)
-          destinationFile.createNewFile()
-          val destinationOutputStream = destinationFile.outputStream()
-          inputStream?.copyTo(destinationOutputStream)
+          check(destinationFile.createNewFile()) { "Resource appeared during import" }
+          try {
+            requireNotNull(inputStream) { "Cannot open icon file" }
+            destinationFile.outputStream().use { output -> inputStream.copyTo(output) }
+          } catch (failure: Exception) {
+            destinationFile.delete()
+            throw failure
+          }
           imageLoader.memoryCache?.remove(MemoryCache.Key(destinationPath.toString()))
         }
       }

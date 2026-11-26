@@ -43,6 +43,8 @@ import io.github.sadellie.sukko.resources.editor_save_as_preset_require_save
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
+// Existing UI callback boundary; keep its API stable during import hardening.
+@Suppress("LongParameterList")
 internal fun EditorScreenDropDownMenu(
   onRename: (newWidgetName: String) -> Unit,
   onForceUpdate: () -> Unit,

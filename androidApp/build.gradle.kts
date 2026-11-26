@@ -19,7 +19,7 @@ android {
   compileSdk = 37
 
   defaultConfig {
-    applicationId = "io.github.sadellie.sukko"
+    applicationId = "io.github.maxxmoai.sukkostudio"
     minSdk = 31
     targetSdk = 37
     versionCode = 4

@@ -288,6 +288,8 @@ private fun EditorScreenContentResponsive(
 }
 
 @Composable
+// Existing UI callback boundary; keep its API stable during import hardening.
+@Suppress("LongParameterList")
 private fun EditorScreenTopBarActions(
   onSave: (isForced: Boolean) -> Unit,
   onRename: (String) -> Unit,

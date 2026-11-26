@@ -9,6 +9,9 @@ import io.github.sadellie.sukko.core.model.GlobalValueCache
 import io.github.sadellie.sukko.core.model.Globals
 import io.github.sadellie.sukko.core.model.basic.M3Color
 import io.github.sadellie.sukko.core.model.layer.Layer
+import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.Channel
@@ -21,9 +24,6 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import okio.Path
 import okio.Path.Companion.toPath
-import kotlin.test.assertEquals
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.Instant
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 internal suspend fun TestScope.observeEvaluation(
@@ -119,6 +119,7 @@ internal fun fakeMediaInfoProvider() =
 
 internal fun fakeDateTimeProvider() =
   object : DateTimeProvider {
+    override val timeZone = kotlinx.datetime.TimeZone.UTC
     override val instant: Instant = Instant.fromEpochSeconds(1778661766)
   }
 

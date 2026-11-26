@@ -13,14 +13,17 @@ interface DateTimeProvider {
   /** Static instant. Should be lazy */
   val instant: Instant
 
+  /** Time zone used for local formatting; overridable for deterministic tests. */
+  val timeZone: TimeZone
+    get() = TimeZone.currentSystemDefault()
+
   /** Timestamp without timezone in seconds */
   val currentTimestamp: Long
     get() = instant.epochSeconds
 
   /** Format [instant] using provided [format] */
   @OptIn(FormatStringsInDatetimeFormats::class)
-  fun currentDate(format: String): String =
-    formatInstant(instant, format, TimeZone.currentSystemDefault())
+  fun currentDate(format: String): String = formatInstant(instant, format, timeZone)
 
   /** Offset [instant] to [timeZoneId] and format it using provided [format] */
   @OptIn(FormatStringsInDatetimeFormats::class)
@@ -30,7 +33,7 @@ interface DateTimeProvider {
   /** Same as [currentDate] but uses [timestamp] instead of [instant] */
   @OptIn(FormatStringsInDatetimeFormats::class)
   fun formatTimestamp(timestamp: Long, format: String): String =
-    formatInstant(Instant.fromEpochSeconds(timestamp), format, TimeZone.currentSystemDefault())
+    formatInstant(Instant.fromEpochSeconds(timestamp), format, timeZone)
 
   @OptIn(FormatStringsInDatetimeFormats::class)
   private fun formatInstant(instant: Instant, format: String, timeZone: TimeZone): String {

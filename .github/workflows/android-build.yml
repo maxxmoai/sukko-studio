@@ -1,0 +1,60 @@
+name: Android debug
+on:
+  push:
+    branches: [master, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK packages
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - name: Check Kotlin formatting
+        env:
+          FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        shell: bash
+        run: |
+          if [[ -z "$FORMAT_BASE" || "$FORMAT_BASE" =~ ^0+$ ]]; then
+            FORMAT_BASE=$(git merge-base HEAD origin/master)
+          fi
+          mapfile -d '' files < <(git diff --name-only --diff-filter=ACMR -z "$FORMAT_BASE" HEAD -- '*.kt' '*.kts')
+          if (( ${#files[@]} )); then
+            curl --fail --location --retry 3 https://repo.maven.apache.org/maven2/com/facebook/ktfmt/0.64/ktfmt-0.64-with-dependencies.jar -o "$RUNNER_TEMP/ktfmt.jar"
+            echo "5b3d5286fd2defcc7dc8e28c21ddf156cc6b2d8682bdcd929ce4333e7a6201f2  $RUNNER_TEMP/ktfmt.jar" | sha256sum --check
+            java -jar "$RUNNER_TEMP/ktfmt.jar" --google-style --dry-run --set-exit-if-changed "${files[@]}"
+          fi
+      - name: Tests and debug APK
+        run: bash gradlew :androidApp:assembleDebug testAndroidHostTest -Pkotlin.incremental=false -Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx3g --max-workers=2 --console=plain
+      - name: Static analysis
+        run: bash gradlew detektProjectReport -Dorg.gradle.jvmargs=-Xmx3g --max-workers=2 --console=plain
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: |
+            **/build/reports/tests/**
+            detekt/report.html
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sukko-studio-debug
+          path: androidApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

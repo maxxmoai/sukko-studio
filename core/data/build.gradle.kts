@@ -59,6 +59,7 @@ kotlin {
     implementation(libs.junit.junit)
   }
   sourceSets.androidDeviceTest.dependencies {
+    implementation(libs.androidx.test.ext.junit.ktx)
     implementation(libs.androidx.room.testing)
     implementation(libs.androidx.test.core)
     implementation(libs.androidx.test.runner)

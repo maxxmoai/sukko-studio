@@ -21,15 +21,14 @@ import io.github.sadellie.sukko.core.model.basic.TextStyleSource
 import io.github.sadellie.sukko.core.model.layer.ColdImageLayer
 import io.github.sadellie.sukko.core.model.layer.ColdTextLayer
 import io.github.vinceglb.filekit.PlatformFile
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okio.Path
 import okio.Path.Companion.toOkioPath
-import java.io.File
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
 
 @Inject
 class WidgetDataPresetExportImport(
@@ -111,7 +110,7 @@ class WidgetDataPresetExportImport(
               .map { it.fontFile }
               .filterIsInstance<FontFile.Custom>()
 
-          val allFonts = fontsFromLayers + fontsFromGlobals
+          val allFonts = (fontsFromLayers + fontsFromGlobals).distinct()
           allFonts.forEach { fontFile ->
             val fontFileFullPath = fontFile.getFullPath(context.filesPath)
             val file = fontFileFullPath.toFile()
@@ -132,22 +131,11 @@ class WidgetDataPresetExportImport(
       temporaryFolderPath.toFile().deleteRecursively()
       temporaryFolderPath.toFile().mkdirs()
 
-      // unzip into temporary folder
-      context.applicationContext.contentResolver.openInputStream(importingPresetUri.toUri())?.use {
-        backupFileInputStream ->
-        ZipInputStream(backupFileInputStream).use { zipInputStream ->
-          var entry = zipInputStream.nextEntry
-          while (entry != null) {
-            val unzippedPath = temporaryFolderPath / entry.name
-            val unzippedFile = unzippedPath.toFile()
-            unzippedFile.parentFile?.mkdirs()
-            unzippedFile.outputStream().buffered().use { unzippedFileStream ->
-              zipInputStream.copyTo(unzippedFileStream)
-            }
-            entry = zipInputStream.nextEntry
-          }
-        }
-      }
+      // Extraction only writes into an empty, app-private staging directory.
+      val input =
+        context.contentResolver.openInputStream(importingPresetUri.toUri())
+          ?: error("Cannot open preset archive")
+      extractPresetArchive(input, temporaryFolderPath.toFile())
 
       // data was read, convert
       val schemaVersion =
@@ -157,7 +145,19 @@ class WidgetDataPresetExportImport(
       val widgetDataPreset =
         consumeAndMigrateWidgetDataPreset(widgetDataPresetAsString, schemaVersion)
 
-      val fullPreviewPath = temporaryFolderPath / WidgetDataPreset.PREVIEW_IMAGE_NAME
+      require(
+        widgetDataPreset.layers.map { it.id }.distinct().size == widgetDataPreset.layers.size
+      ) {
+        "Duplicate layer identifiers"
+      }
+      widgetDataPreset.layers.filterIsInstance<ColdImageLayer>().forEach { layer ->
+        val icon = (layer.imageUriSource as? ImageUriSource.IconPack)?.iconFile
+        if (icon != null && icon.iconPack is IconPack.Custom) {
+          requireResourceName(icon.fileName)
+          require(icon.getFullPath(temporaryFolderPath).toFile().isFile) { "Missing preset icon" }
+        }
+      }
+      val fullPreviewPath = optionalPreview(temporaryFolderPath.toFile())?.toOkioPath()
       val importingIconPacks =
         widgetDataPreset.layers
           .filterIsInstance<ColdImageLayer>()
@@ -184,8 +184,17 @@ class WidgetDataPresetExportImport(
           .map { it.fontFile }
           .filterIsInstance<FontFile.Custom>()
           .map { ImportingFontFile(it.fileName, true) }
-      val allImportingFontFiles = importingFontFilesFromLayers + importingFontFilesFromGlobals
+      val allImportingFontFiles =
+        (importingFontFilesFromLayers + importingFontFilesFromGlobals).distinct()
 
+      allImportingFontFiles.forEach { font ->
+        requireResourceName(font.importingName)
+        require(
+          FontFile.Custom(font.importingName).getFullPath(temporaryFolderPath).toFile().isFile
+        ) {
+          "Missing preset font"
+        }
+      }
       return@withContext ImportingWidgetDataPreset(
         widgetDataPreset = widgetDataPreset,
         fullPreviewPath = fullPreviewPath,
@@ -197,16 +206,18 @@ class WidgetDataPresetExportImport(
   suspend fun import(importingWidgetDataPreset: ImportingWidgetDataPreset) {
     withContext(Dispatchers.IO) {
       val temporaryFolderPath = getTemporaryFolderPath()
-      val widgetDataPreset =
+      var widgetDataPreset =
         importIconPacksFromPreset(
           widgetDataPreset = importingWidgetDataPreset.widgetDataPreset,
           importingIconPacks = importingWidgetDataPreset.importingIconPacks,
           temporaryFolderPath = temporaryFolderPath,
         )
-      importFontFileFromPreset(
-        importingFontFiles = importingWidgetDataPreset.importingFontFiles,
-        temporaryFolderPath = temporaryFolderPath,
-      )
+      widgetDataPreset =
+        importFontFileFromPreset(
+          widgetDataPreset = widgetDataPreset,
+          importingFontFiles = importingWidgetDataPreset.importingFontFiles,
+          temporaryFolderPath = temporaryFolderPath,
+        )
       widgetDataPresetCustomRepository.insertNewWithPreview(
         widgetDataPreset = widgetDataPreset,
         previewPath = importingWidgetDataPreset.fullPreviewPath,
@@ -226,66 +237,105 @@ class WidgetDataPresetExportImport(
         IconPack.Custom(importingIconPack.importingId, importingIconPack.importingName)
       val importingIconPackPath = oldIconPack.getFullPath(temporaryFolderPath)
       val iconFilesInImporting =
-        importingIconPackPath.toFile().listFiles()?.map { PlatformFile(it) } ?: emptyList()
-      when (val action = importingIconPack.action) {
-        ImportingIconPackAction.CreateNew -> {
-          // create new icon pack (id will be updated from db)
-          val newIconPack = iconPackCustomRepository.addNewIconPack(oldIconPack)
-          // import icons into this icon pack
-          iconPackCustomRepository.importIconFiles(newIconPack, iconFilesInImporting)
-          // modify all icon layer so they point to this icon pack
-          result = replaceIconPack(oldIconPack, newIconPack, result)
+        importingIconPackPath.toFile().listFiles()?.filter { it.isFile } ?: emptyList()
+      val destinationIconPack =
+        when (val action = importingIconPack.action) {
+          ImportingIconPackAction.CreateNew -> iconPackCustomRepository.addNewIconPack(oldIconPack)
+          is ImportingIconPackAction.Merge -> action.destinationIconPack
         }
-
-        is ImportingIconPackAction.Merge -> {
-          val destinationIconPack = action.destinationIconPack
-          // import into selected icon pack
-          iconPackCustomRepository.importIconFiles(destinationIconPack, iconFilesInImporting)
-          // modify icon layers
-          result = replaceIconPack(oldIconPack, destinationIconPack, result)
-        }
+      val staging = File.createTempFile("icons-", ".stage", context.cacheDir)
+      check(staging.delete() && staging.mkdir())
+      try {
+        val merge =
+          prepareResourceMerge(
+            iconFilesInImporting,
+            destinationIconPack.getFullPath(context.filesPath).toFile(),
+            staging,
+          )
+        iconPackCustomRepository.importIconFiles(
+          destinationIconPack,
+          merge.files.map { PlatformFile(it) },
+        )
+        result =
+          replaceIconPack(oldIconPack, destinationIconPack, result, merge.names, widgetDataPreset)
+      } finally {
+        staging.deleteRecursively()
       }
     }
 
     return result
   }
 
-  /** Import font files, doesn't change anything in preset. */
+  /** Merge fonts without replacing installed resources; update local and global text styles. */
   private suspend fun importFontFileFromPreset(
+    widgetDataPreset: WidgetDataPreset.Custom,
     importingFontFiles: List<ImportingFontFile>,
     temporaryFolderPath: Path,
-  ) {
-    val fontFilesToImport =
+  ): WidgetDataPreset.Custom {
+    val sourceFiles =
       importingFontFiles
         .filter { it.import }
-        .map { importingFontFile ->
-          val importingFontFileAndroid =
-            FontFile.Custom(importingFontFile.importingName)
-              .getFullPath(temporaryFolderPath)
-              .toFile()
-          PlatformFile(importingFontFileAndroid)
+        .distinctBy { it.importingName }
+        .map {
+          requireResourceName(it.importingName)
+          FontFile.Custom(it.importingName).getFullPath(temporaryFolderPath).toFile()
         }
-    fontFileCustomRepository.importFontFiles(fontFilesToImport)
+    val staging = File.createTempFile("fonts-", ".stage", context.cacheDir)
+    check(staging.delete() && staging.mkdir())
+    try {
+      val destination =
+        FontFile.Custom("placeholder").getFullPath(context.filesPath).toFile().parentFile
+      val merge = prepareResourceMerge(sourceFiles, requireNotNull(destination), staging)
+      fontFileCustomRepository.importFontFiles(merge.files.map { PlatformFile(it) })
+      fun remap(style: TextStyleSource): TextStyleSource {
+        if (style !is TextStyleSource.Local) return style
+        val font = style.fontFile as? FontFile.Custom ?: return style
+        return style.copy(fontFile = FontFile.Custom(merge.names[font.fileName] ?: font.fileName))
+      }
+      return widgetDataPreset.copy(
+        layers =
+          widgetDataPreset.layers.map { layer ->
+            if (layer is ColdTextLayer) layer.copy(textStyleSource = remap(layer.textStyleSource))
+            else layer
+          },
+        globals =
+          widgetDataPreset.globals.copy(
+            textStyles =
+              widgetDataPreset.globals.textStyles.map {
+                it.copy(initialValue = remap(it.initialValue))
+              }
+          ),
+      )
+    } finally {
+      staging.deleteRecursively()
+    }
   }
 
   internal fun getTemporaryFolderPath(): Path =
     context.cacheDir.toOkioPath() / TEMPORARY_IMPORT_FOLDER_NAME
 }
 
-private fun replaceIconPack(
+internal fun replaceIconPack(
   oldIconPack: IconPack,
   newIconPack: IconPack,
   widgetDataPreset: WidgetDataPreset.Custom,
+  fileNames: Map<String, String> = emptyMap(),
+  originalPreset: WidgetDataPreset.Custom = widgetDataPreset,
 ): WidgetDataPreset.Custom {
   val updatedLayers =
-    widgetDataPreset.layers.map { layer ->
-      if (layer !is ColdImageLayer) return@map layer
-      val imageSource = layer.imageUriSource
-      if (imageSource !is ImageUriSource.IconPack) return@map layer
-      val iconFile = imageSource.iconFile ?: return@map layer
-      if (iconFile.iconPack != oldIconPack) return@map layer
+    widgetDataPreset.layers.mapIndexed { index, layer ->
+      if (layer !is ColdImageLayer) return@mapIndexed layer
+      // Resolve against original IDs: a newly assigned pack ID can equal another imported ID.
+      val imageSource = (originalPreset.layers[index] as? ColdImageLayer)?.imageUriSource
+      if (imageSource !is ImageUriSource.IconPack) return@mapIndexed layer
+      val iconFile = imageSource.iconFile ?: return@mapIndexed layer
+      if (iconFile.iconPack != oldIconPack) return@mapIndexed layer
 
-      val updatedIconFile = iconFile.copy(iconPack = newIconPack)
+      val updatedIconFile =
+        iconFile.copy(
+          iconPack = newIconPack,
+          fileName = fileNames[iconFile.fileName] ?: iconFile.fileName,
+        )
       val updatedLayer = layer.copy(imageUriSource = ImageUriSource.IconPack(updatedIconFile))
       updatedLayer
     }

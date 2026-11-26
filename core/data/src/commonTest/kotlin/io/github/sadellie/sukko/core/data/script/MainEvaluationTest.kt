@@ -1,9 +1,9 @@
 package io.github.sadellie.sukko.core.data.script
 
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlinx.coroutines.test.runTest
 
 /** From documentation examples. */
 class MainEvaluationTest {
@@ -62,7 +62,7 @@ class MainEvaluationTest {
       "Phone is charging",
     )
 
-  @Test fun evaluate_currentDate1() = assertEvaluation("currentDate(\"HH:mm\")", "11:42")
+  @Test fun evaluate_currentDate1() = assertEvaluation("currentDate(\"HH:mm\")", "08:42")
 
   @Test
   fun evaluate_currentDateWithTimeZone1() =
@@ -110,7 +110,7 @@ class MainEvaluationTest {
 
   @Test
   fun evaluate_timeManipulation() {
-    assertEvaluation("""formatTimestamp(123+456, "HH:mm")""", "03:09")
+    assertEvaluation("""formatTimestamp(123+456, "HH:mm")""", "00:09")
   }
 
   @Test

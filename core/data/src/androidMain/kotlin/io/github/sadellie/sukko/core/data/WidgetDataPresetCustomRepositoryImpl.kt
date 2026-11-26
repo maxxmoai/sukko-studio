@@ -36,12 +36,18 @@ internal class WidgetDataPresetCustomRepositoryImpl(
   ): Long {
     val presetId = dao.insertNew(widgetDataPreset.copy(presetId = 0).toBased())
 
-    if (previewPath != null) {
-      val previewFile = previewPath.toFile()
-      val destinationFile =
-        widgetDataPreset.copy(presetId = presetId).getPreviewPath(context.filesPath).toFile()
-      previewFile.copyTo(target = destinationFile, overwrite = true)
-      imageLoader.memoryCache?.remove(MemoryCache.Key(previewPath.toString()))
+    try {
+      if (previewPath != null) {
+        val previewFile = previewPath.toFile()
+        val destinationFile =
+          widgetDataPreset.copy(presetId = presetId).getPreviewPath(context.filesPath).toFile()
+        destinationFile.parentFile?.mkdirs()
+        previewFile.copyTo(target = destinationFile, overwrite = true)
+        imageLoader.memoryCache?.remove(MemoryCache.Key(previewPath.toString()))
+      }
+    } catch (failure: Exception) {
+      delete(presetId)
+      throw failure
     }
     return presetId
   }

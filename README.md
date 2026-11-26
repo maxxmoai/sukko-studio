@@ -1,3 +1,20 @@
+# Sukko Studio
+
+Fork de [Sukko par sadellie](https://github.com/sadellie/sukko), conservant sa licence et son moteur.
+Travail en cours: fondations Android et fiabilisation des imports. Ce n’est pas encore une version stable.
+
+- [Statut réel du développement](docs/DEVELOPMENT_STATUS.md)
+- [Architecture](docs/ARCHITECTURE.md) · [Feuille de route](docs/ROADMAP.md)
+- [Compilation et tests](docs/TESTING.md) · [Limites](docs/KNOWN_LIMITATIONS.md)
+- [Instructions agents](AGENTS.md)
+
+Identifiant du fork: `io.github.maxxmoai.sukkostudio` (`.debug` pour les APK de développement).
+Les noms de packages internes sont conservés pour la compatibilité des presets.
+
+---
+
+Documentation historique upstream conservée ci-dessous:
+
 <p align="middle">
     <img src="./docs/banner.png" style="width:80%"/>
 </p>

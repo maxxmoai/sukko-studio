@@ -6,10 +6,10 @@ import androidx.compose.ui.graphics.SolidColor
 import io.github.sadellie.sukko.core.model.basic.BrushSource
 import io.github.sadellie.sukko.core.model.basic.ScriptableColor
 import io.github.sadellie.sukko.core.model.basic.ScriptableDouble
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlinx.coroutines.test.runTest
 
 class BrushSourceEvaluatorTest {
   private val evaluator = BrushSourceEvaluator(fakeScriptableEvaluator())
@@ -57,11 +57,14 @@ class BrushSourceEvaluatorTest {
   @Test
   fun `evaluate RadialGradient creates radial gradient with correct radius`() = runTest {
     val colors =
-      listOf(ScriptableColor.FixedCustom(Color.Red), ScriptableColor.FixedCustom(Color.Blue))
+      listOf(
+        0f to ScriptableColor.FixedCustom(Color.Red),
+        1f to ScriptableColor.FixedCustom(Color.Blue),
+      )
     val radius = ScriptableDouble.Fixed(50.0)
     val brushSource = BrushSource.RadialGradient(colors, radius)
     val result = evaluator.evaluate(brushSource)
-    val expected = Brush.radialGradient(colors = listOf(Color.Red, Color.Blue), radius = 50f)
+    val expected = Brush.radialGradient(0f to Color.Red, 1f to Color.Blue, radius = 50f)
     assertEquals(expected, result)
   }
 }

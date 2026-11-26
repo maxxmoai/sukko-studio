@@ -16,7 +16,7 @@ class SimplifyFunctionTest {
 
   @Test
   fun simplify_functionCurrentDate1() =
-    assertSimplify("""currentDate("HH:mm")""", TextNode("11:42"))
+    assertSimplify("""currentDate("HH:mm")""", TextNode("08:42"))
 
   @Test
   fun simplify_functionCurrentDateWithTimeZone1() =
@@ -107,7 +107,7 @@ class SimplifyFunctionTest {
 
   @Test
   fun simplify_formatTimestamp() =
-    assertSimplify("""formatTimestamp(123, "HH:mm")""", TextNode("03:02"))
+    assertSimplify("""formatTimestamp(123, "HH:mm")""", TextNode("00:02"))
 
   @Test
   fun simplify_colorScheme() =

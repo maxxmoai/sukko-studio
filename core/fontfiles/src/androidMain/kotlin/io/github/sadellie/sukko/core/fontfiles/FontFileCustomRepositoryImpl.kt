@@ -32,16 +32,21 @@ class FontFileCustomRepositoryImpl(private val context: Context) : FontFileCusto
 
   override suspend fun importFontFiles(filesToImport: List<PlatformFile>) =
     withContext(Dispatchers.IO) {
-      val fontsDirectory = FontFile.Custom.DIR_PATH.toPath().toFile()
+      val fontsDirectory = (context.filesPath / FontFile.Custom.DIR_PATH).toFile()
       fontsDirectory.mkdirs()
       filesToImport.forEach { platformFile ->
         context.contentResolver.openInputStream(platformFile.uri()).use { inputStream ->
           val destinationPath = FontFile.Custom(platformFile.name).getFullPath(context.filesPath)
           val destinationFile = destinationPath.toFile()
           if (destinationFile.exists()) throw FileAlreadyExistsException(destinationFile)
-          destinationFile.createNewFile()
-          val destinationOutputStream = destinationFile.outputStream()
-          inputStream?.copyTo(destinationOutputStream)
+          check(destinationFile.createNewFile()) { "Resource appeared during import" }
+          try {
+            requireNotNull(inputStream) { "Cannot open font file" }
+            destinationFile.outputStream().use { output -> inputStream.copyTo(output) }
+          } catch (failure: Exception) {
+            destinationFile.delete()
+            throw failure
+          }
         }
       }
     }
